@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriTwin | AI Leaf Diagnostics</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2ecc71;
+            --bg: #0d1117;
+            --card: #161b22;
+            --border: #30363d;
+            --text: #c9d1d9;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+
+        /* Sidebar Nav */
+        nav { width: 80px; background: #010409; border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 20px 0; }
+        .nav-icon { width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; color: #8b949e; cursor: pointer; border-radius: 12px; margin-bottom: 20px; }
+        .nav-icon.active { color: var(--primary); background: rgba(46, 204, 113, 0.1); }
+
+        /* Main Content */
+        main { flex: 1; display: grid; grid-template-columns: 450px 1fr; padding: 30px; gap: 30px; overflow-y: auto; }
+
+        /* Left Column: Upload */
+        .upload-section { background: var(--card); border: 1px solid var(--border); border-radius: 24px; padding: 30px; display: flex; flex-direction: column; }
+        .upload-area { border: 2px dashed var(--border); border-radius: 15px; height: 250px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; overflow: hidden; margin: 20px 0; }
+        .upload-area:hover { border-color: var(--primary); }
+        #preview-img { width: 100%; height: 100%; object-fit: cover; position: absolute; display: none; }
+
+        /* Right Column: Database */
+        .db-section { display: flex; flex-direction: column; gap: 20px; }
+        .info-card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 25px; }
+
+        /* Nutrient Bars */
+        .nutrient-row { margin: 15px 0; }
+        .bar-container { height: 8px; background: #333; border-radius: 4px; margin-top: 8px; }
+        .bar-fill { height: 100%; border-radius: 4px; transition: 1s ease-in-out; }
+
+        /* Fertilizer Decision Box */
+        .decision-box { background: rgba(46, 204, 113, 0.05); border: 1px solid var(--primary); padding: 20px; border-radius: 15px; margin-top: 20px; display: none; }
+        
+        .btn-scan { background: var(--primary); color: black; border: none; padding: 18px; border-radius: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; }
+        .loading { display: none; text-align: center; color: var(--primary); margin: 10px 0; }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="nav-icon"><i class="fas fa-th-large"></i></div>
+        <div class="nav-icon active"><i class="fas fa-camera"></i></div>
+        <div class="nav-icon"><i class="fas fa-database"></i></div>
+        <div class="nav-icon"><i class="fas fa-history"></i></div>
+    </nav>
+
+    <main>
+        <section class="upload-section">
+            <h2>AI Leaf Scan</h2>
+            <p style="color: #8b949e; font-size: 0.8rem;">Upload Banana, Mango, or Coffee leaves.</p>
+
+            <input type="file" id="leafInput" hidden accept="image/*">
+            <div class="upload-area" onclick="document.getElementById('leafInput').click()">
+                <div id="upload-txt" style="text-align:center">
+                    <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #555;"></i>
+                    <p style="margin-top:10px;">Click to upload leaf image</p>
+                </div>
+                <img id="preview-img">
+            </div>
+
+            <div class="loading" id="loader"><i class="fas fa-sync fa-spin"></i> Analyzing Point-Data...</div>
+            <button class="btn-scan" onclick="processAI()">Run AI Diagnosis</button>
+        </section>
+
+        <section class="db-section">
+            <div class="info-card">
+                <h2>Field Database Information</h2>
+                <p id="crop-title" style="color: var(--primary); font-weight:bold; margin-top:10px;">Awaiting scan...</p>
+                
+                <div id="nutrient-stats" style="margin-top:20px;">
+                    <div class="nutrient-row">
+                        <small>Nitrogen (N)</small>
+                        <div class="bar-container"><div id="n-bar" class="bar-fill" style="width: 0%; background: #3498db;"></div></div>
+                    </div>
+                    <div class="nutrient-row">
+                        <small>Phosphorus (P)</small>
+                        <div class="bar-container"><div id="p-bar" class="bar-fill" style="width: 0%; background: #9b59b6;"></div></div>
+                    </div>
+                    <div class="nutrient-row">
+                        <small>Potassium (K)</small>
+                        <div class="bar-container"><div id="k-bar" class="bar-fill" style="width: 0%; background: #e67e22;"></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-card" id="decision-panel">
+                <h2>Fertilizer Decision Engine</h2>
+                <div class="decision-box" id="result-box">
+                    <h3 style="color: var(--primary);"><i class="fas fa-check-circle"></i> Diagnosis: Healthy Leaf</h3>
+                    <p id="fert-rec" style="margin-top: 10px; font-size: 0.9rem; line-height: 1.6;"></p>
+                    <div style="margin-top:15px; padding-top:15px; border-top: 1px solid #333;">
+                        <small style="color: #8b949e;"><b>Application Method:</b> Root-zone irrigation sync with ESP32.</small>
+                    </div>
+                </div>
+                <p id="waiting-msg" style="color: #555; text-align:center; padding: 20px;">Upload image to generate fertilizer plan.</p>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // Fertilizer & Nutrient Database
+        const cropDB = {
+            banana: {
+                title: "Detected Species: BANANA (Musa)",
+                n: 80, p: 40, k: 95,
+                rec: "Decision: High Potassium (K) required. Apply NPK 15-5-35. Ensure soil moisture stays at 40% via Node-01."
+            },
+            mango: {
+                title: "Detected Species: MANGO (Mangifera indica)",
+                n: 50, p: 70, k: 50,
+                rec: "Decision: Phosphorus boost needed for root health. Apply NPK 10-25-10. Monitor temperature thresholds."
+            },
+            coffee: {
+                title: "Detected Species: COFFEE (Coffea arabica)",
+                n: 90, p: 30, k: 70,
+                rec: "Decision: High Nitrogen focus for leaf vigor. Apply NPK 20-10-15. Mist irrigation recommended via ESP32-Cam."
+            }
+        };
+
+        const leafInput = document.getElementById('leafInput');
+        const preview = document.getElementById('preview-img');
+        const uploadTxt = document.getElementById('upload-txt');
+
+        leafInput.onchange = e => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = event => {
+                    preview.src = event.target.result;
+                    preview.style.display = 'block';
+                    uploadTxt.style.display = 'none';
+                }
+                reader.readAsDataURL(file);
+            }
+        };
+
+        function processAI() {
+            const file = leafInput.files[0];
+            if (!file) return alert("Please upload a leaf image first!");
+
+            document.getElementById('loader').style.display = 'block';
+            
+            // AI Simulation Logic based on Filename or random for demo
+            const name = file.name.toLowerCase();
+            let type = "banana"; 
+            if(name.includes("mango")) type = "mango";
+            if(name.includes("coffee")) type = "coffee";
+
+            setTimeout(() => {
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('waiting-msg').style.display = 'none';
+                document.getElementById('result-box').style.display = 'block';
+                
+                // Update UI from Database
+                const data = cropDB[type];
+                document.getElementById('crop-title').innerText = data.title;
+                document.getElementById('n-bar').style.width = data.n + "%";
+                document.getElementById('p-bar').style.width = data.p + "%";
+                document.getElementById('k-bar').style.width = data.k + "%";
+                document.getElementById('fert-rec').innerText = data.rec;
+            }, 2000);
+        }
+    </script>
+</body>
+</html>

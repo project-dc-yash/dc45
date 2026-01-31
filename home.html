@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriTwin Dashboard | Live ESP32 Feed</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #0b0f0c;
+            --card-bg: #161b18;
+            --primary: #2ecc71;
+            --text-main: #e0e0e0;
+            --border: rgba(255,255,255,0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
+
+        /* Sidebar Nav */
+        nav {
+            width: 260px;
+            background: var(--card-bg);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 30px 20px;
+        }
+        .logo { font-size: 1.5rem; font-weight: bold; color: var(--primary); margin-bottom: 50px; display: flex; gap: 10px; }
+        .nav-item { padding: 15px; color: #888; text-decoration: none; display: flex; align-items: center; gap: 15px; border-radius: 10px; margin-bottom: 5px; transition: 0.3s; }
+        .nav-item.active, .nav-item:hover { background: rgba(46, 204, 113, 0.1); color: var(--primary); }
+
+        /* Main Content */
+        main { flex: 1; overflow-y: auto; padding: 30px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .status-pill { background: rgba(46, 204, 113, 0.1); color: var(--primary); padding: 5px 15px; border-radius: 20px; font-size: 0.8rem; border: 1px solid var(--primary); }
+
+        /* Dashboard Grid */
+        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: var(--card-bg); padding: 25px; border-radius: 15px; border: 1px solid var(--border); }
+        .stat-card i { font-size: 1.5rem; color: var(--primary); margin-bottom: 15px; }
+        .stat-card h3 { font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        .stat-card p { font-size: 1.8rem; font-weight: bold; margin-top: 5px; }
+        .stat-card .trend { font-size: 0.8rem; color: var(--primary); }
+
+        /* Middle Row */
+        .visual-row { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        .chart-container, .node-list { background: var(--card-bg); padding: 25px; border-radius: 15px; border: 1px solid var(--border); }
+
+        /* Node List Items */
+        .node-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid var(--border); }
+        .node-info h4 { font-size: 0.9rem; }
+        .node-info p { font-size: 0.75rem; color: #666; }
+        .online-indicator { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; box-shadow: 0 0 10px var(--primary); }
+
+        canvas { width: 100% !important; height: 300px !important; }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="logo"><i class="fas fa-seedling"></i> AgriTwin</div>
+        <a href="#" class="nav-item active"><i class="fas fa-th-large"></i> Dashboard</a>
+        <a href="ESP32.html" class="nav-item"><i class="fas fa-microchip"></i> ESP32 Nodes</a>
+        <a href=" FieldView.html" class="nav-item"><i class="fas fa-map-marked-alt"></i> Field View</a>
+        <a href="History.html" class="nav-item"><i class="fas fa-history"></i> History Logs</a>
+        <a href="Settings.html" class="nav-item" style="margin-top: auto;"><i class="fas fa-cog"></i> Settings</a>
+    </nav>
+
+    <main>
+        <div class="header">
+            <div>
+                <h1>Precision Monitor</h1>
+                <p style="color: #666;">Digital Twin Sync: <span id="sync-time">Just now</span></p>
+            </div>
+            <div class="status-pill"><i class="fas fa-circle" style="font-size: 0.5rem;"></i> ESP32 MESH ONLINE</div>
+        </div>
+
+        <div class="grid">
+            <div class="stat-card">
+                <i class="fas fa-tint"></i>
+                <h3>Soil Moisture</h3>
+                <p id="moisture-val">42%</p>
+                <span class="trend">Optimal Level</span>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-thermometer-half"></i>
+                <h3>Temperature</h3>
+                <p id="temp-val">26.4°C</p>
+                <span class="trend" style="color: #e67e22;">+0.2° from avg</span>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-cloud-sun"></i>
+                <h3>Humidity</h3>
+                <p id="hum-val">68%</p>
+                <span class="trend">Stable</span>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-battery-three-quarters"></i>
+                <h3>ESP32 Battery</h3>
+                <p>3.9V</p>
+                <span class="trend">Charging (Solar)</span>
+            </div>
+        </div>
+
+        <div class="visual-row">
+            <div class="chart-container">
+                <h3 style="margin-bottom: 20px;">Soil Health Analytics (24h)</h3>
+                <canvas id="soilChart"></canvas>
+            </div>
+
+            <div class="node-list">
+                <h3 style="margin-bottom: 20px;">Active ESP32 Nodes</h3>
+                <div class="node-item">
+                    <div class="node-info">
+                        <h4>Field_A_Main</h4>
+                        <p>ID: ESP32-WROOM-01</p>
+                    </div>
+                    <div class="online-indicator"></div>
+                </div>
+                <div class="node-item">
+                    <div class="node-info">
+                        <h4>Irrigation_Valve_1</h4>
+                        <p>ID: ESP32-SOL-04</p>
+                    </div>
+                    <div class="online-indicator"></div>
+                </div>
+                <div class="node-item">
+                    <div class="node-info">
+                        <h4>Drone_Dock_South</h4>
+                        <p>ID: ESP32-CAM-09</p>
+                    </div>
+                    <div class="online-indicator" style="background: #999; box-shadow: none;"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Simulated Live Data Script
+        function updateData() {
+            // Update Text values randomly to simulate real sensor feed
+            const moisture = (Math.random() * (45 - 40) + 40).toFixed(1);
+            const temp = (Math.random() * (27 - 25) + 25).toFixed(1);
+            
+            document.getElementById('moisture-val').innerText = moisture + "%";
+            document.getElementById('temp-val').innerText = temp + "°C";
+            document.getElementById('sync-time').innerText = new Date().toLocaleTimeString();
+        }
+
+        setInterval(updateData, 3000); // Update every 3 seconds
+
+        // Chart.js Setup
+        const ctx = document.getElementById('soilChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['6am', '9am', '12pm', '3pm', '6pm', '9pm', '12am'],
+                datasets: [{
+                    label: 'Moisture Level',
+                    data: [38, 40, 42, 41, 44, 42, 43],
+                    borderColor: '#2ecc71',
+                    tension: 0.4,
+                    fill: true,
+                    backgroundColor: 'rgba(46, 204, 113, 0.1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { grid: { color: '#222' }, ticks: { color: '#888' } },
+                    x: { grid: { color: '#222' }, ticks: { color: '#888' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    </script>
+</body>
+</html>
